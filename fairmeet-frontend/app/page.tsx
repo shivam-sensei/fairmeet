@@ -6,13 +6,14 @@ import Sidebar from "@/app/components/Sidebar";
 import { getFairMeetupSpot, rerouteToVenue } from "@/lib/api";
 import type { FairSpotResponse, LocationPoint, LocationSearchResult, Venue } from "@/types";
 
-const COLORS = ["#2563eb", "#dc2626", "#16a34a", "#ea580c"];
+const COLORS = ["#4f46e5", "#f43f5e", "#059669", "#f59e0b"];
 
 export default function Home() {
   const [locations, setLocations] = useState<LocationPoint[]>([]);
   const [profile, setProfile] = useState("driving-car");
   const [result, setResult] = useState<FairSpotResponse | null>(null);
-  const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null);
+  const [selectedVenue, setSelectedVenue] = useState<Venue | null>(null);
+  const [pendingVenueId, setPendingVenueId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flyToTarget, setFlyToTarget] = useState<Pick<LocationPoint, "lat" | "lng"> | null>(null);
@@ -35,7 +36,7 @@ export default function Home() {
     const restoredProfile = params.get("profile");
     if (restoredProfile) setProfile(restoredProfile);
     const restoredVenue = params.get("venue");
-    if (restoredVenue) setSelectedVenueId(restoredVenue);
+    if (restoredVenue) setPendingVenueId(restoredVenue);
     setUrlReady(true);
   }, []);
 
@@ -44,9 +45,18 @@ export default function Home() {
     const params = new URLSearchParams();
     locations.forEach((location, index) => params.set(`f${index + 1}`, `${location.lat},${location.lng}`));
     params.set("profile", profile);
-    if (selectedVenueId) params.set("venue", selectedVenueId);
+    if (selectedVenue?.id ?? pendingVenueId) params.set("venue", selectedVenue?.id ?? pendingVenueId!);
     window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
-  }, [locations, profile, selectedVenueId, urlReady]);
+  }, [locations, profile, selectedVenue, pendingVenueId, urlReady]);
+
+  useEffect(() => {
+    if (!result?.venues.length) return;
+    const restoredVenue = pendingVenueId
+      ? result.venues.find((venue) => venue.id === pendingVenueId)
+      : null;
+    setSelectedVenue((current) => current ?? restoredVenue ?? result.venues[0]);
+    if (restoredVenue) setPendingVenueId(null);
+  }, [result, pendingVenueId]);
 
   const addLocation = useCallback((location: LocationPoint) => {
     setLocations((current) => [...current, { ...location, color: COLORS[current.length % COLORS.length] }]);
@@ -119,8 +129,29 @@ export default function Home() {
     setIsLoading(true);
     setError(null);
     try {
-      setResult(await getFairMeetupSpot(locations, profile, undefined, category));
-      setSelectedVenueId(null);
+      const data = await getFairMeetupSpot(locations, profile, undefined, category);
+      const firstVenue = data.venues[0];
+      if (!firstVenue) {
+        setSelectedVenue(null);
+        setResult(data);
+        return;
+      }
+
+      setSelectedVenue(firstVenue);
+      try {
+        const rerouted = await rerouteToVenue(locations, {
+          lat: firstVenue.lat,
+          lng: firstVenue.lng,
+        }, profile);
+        setResult({
+          ...data,
+          fair_point: rerouted.destination,
+          routes: rerouted.routes,
+        });
+      } catch {
+        setResult(data);
+        setError("The meetup spot was selected, but route details are still centered on the fair point.");
+      }
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Something went wrong while finding your spot.");
     } finally {
@@ -131,7 +162,7 @@ export default function Home() {
   const selectVenue = useCallback(async (venue: Venue) => {
     setIsLoading(true);
     setError(null);
-    setSelectedVenueId(venue.id);
+    setSelectedVenue(venue);
     try {
       const rerouted = await rerouteToVenue(locations, {
         lat: venue.lat,
@@ -158,7 +189,8 @@ export default function Home() {
         isochrone={result?.isochrone_geojson}
         routes={result?.routes ?? []}
         venues={result?.venues ?? []}
-        selectedVenueId={selectedVenueId}
+        selectedVenue={selectedVenue}
+        selectedVenueId={selectedVenue?.id ?? null}
         flyToTarget={flyToTarget}
         onAddLocation={addLocation}
         onUpdateLocation={updateLocation}
@@ -170,7 +202,8 @@ export default function Home() {
         fairPoint={result?.fair_point ?? null}
         routes={result?.routes ?? []}
         venues={result?.venues ?? []}
-        selectedVenueId={selectedVenueId}
+        selectedVenue={selectedVenue}
+        selectedVenueId={selectedVenue?.id ?? null}
         isLoading={isLoading}
         error={error}
         onLabelChange={updateLabel}

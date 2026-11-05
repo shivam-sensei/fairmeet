@@ -1,6 +1,10 @@
 import type { FairSpotResponse, LocationPoint, RerouteResponse, Venue } from "@/types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:8000";
+const ROUTING_PROFILE = (profile: string) => profile === "metro" ? "driving-car" : profile;
 
 function isFairSpotResponse(value: unknown): value is FairSpotResponse {
   if (!value || typeof value !== "object") return false;
@@ -24,10 +28,10 @@ export async function getFairMeetupSpot(
   let response: Response;
 
   try {
-    response = await fetch(`${API_URL}/api/v1/fair-spot`, {
+    response = await fetch(`${API_BASE_URL}/api/v1/fair-spot`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ locations, profile, override_target: overrideTarget, category }),
+      body: JSON.stringify({ locations, profile: ROUTING_PROFILE(profile), override_target: overrideTarget, category }),
     });
   } catch {
     throw new Error(
@@ -66,7 +70,7 @@ export async function getFilteredVenues(
   category: string,
   radius = 800,
 ): Promise<Venue[]> {
-  const response = await fetch(`${API_URL}/api/v1/venues`, {
+  const response = await fetch(`${API_BASE_URL}/api/v1/venues`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ lat, lng, category, radius }),
@@ -82,10 +86,10 @@ export async function rerouteToVenue(
 ): Promise<RerouteResponse> {
   let response: Response;
   try {
-    response = await fetch(`${API_URL}/api/v1/reroute`, {
+    response = await fetch(`${API_BASE_URL}/api/v1/reroute`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ origins, destination, profile }),
+      body: JSON.stringify({ origins, destination, profile: ROUTING_PROFILE(profile) }),
     });
   } catch {
     throw new Error("Unable to reach FairMeet while rerouting to this venue.");

@@ -16,6 +16,7 @@ interface MapProps {
   isochrone: GeoJSON.FeatureCollection | undefined;
   routes: FriendRouteSummary[];
   venues: Venue[];
+  selectedVenue: Venue | null;
   selectedVenueId: string | null;
   flyToTarget: Pick<LocationPoint, "lat" | "lng"> | null;
   onAddLocation: (point: LocationPoint) => void;
@@ -24,7 +25,7 @@ interface MapProps {
 }
 
 const MAP_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
-const COLORS = ["#2563eb", "#dc2626", "#16a34a", "#ea580c"];
+const COLORS = ["#4f46e5", "#f43f5e", "#059669", "#f59e0b"];
 
 function markerElement(color: string, label: string, index: number) {
   const element = document.createElement("div");
@@ -37,10 +38,10 @@ function markerElement(color: string, label: string, index: number) {
 function venueMarkerElement(venue: Venue, selected: boolean) {
   const element = document.createElement("button");
   element.type = "button";
-  element.textContent = venue.category.toLowerCase().includes("cafe") ? "☕" : "🍔";
+  element.textContent = selected ? "★" : venue.category.toLowerCase().includes("cafe") ? "☕" : "🍔";
   element.title = `Select ${venue.name} as meetup spot`;
   element.setAttribute("aria-label", `Select ${venue.name} as meetup spot`);
-  element.style.cssText = `display:flex;align-items:center;justify-content:center;width:30px;height:30px;border:2px solid white;border-radius:50%;background:${selected ? "#db2777" : "#7c3aed"};box-shadow:0 2px 8px #0006;font-size:15px;cursor:pointer`;
+  element.style.cssText = `display:flex;align-items:center;justify-content:center;width:${selected ? 36 : 24}px;height:${selected ? 36 : 24}px;border:2px solid white;border-radius:50%;background:${selected ? "#6d28d9" : "#7c3aed"};opacity:${selected ? 1 : 0.8};box-shadow:${selected ? "0 0 0 5px #6366f1aa,0 4px 14px #4f46e580" : "0 2px 8px #0006"};color:${selected ? "#fbbf24" : "white"};font-size:${selected ? 20 : 13}px;cursor:pointer`;
   return element;
 }
 
@@ -50,6 +51,7 @@ export default function Map({
   isochrone,
   routes,
   venues,
+  selectedVenue,
   selectedVenueId,
   flyToTarget,
   onAddLocation,
@@ -176,11 +178,15 @@ export default function Map({
       const activeRouteIds = new Set(routes.map((route) => route.friend_id));
       const layers = map.getStyle().layers ?? [];
       layers.forEach((layer) => {
-        if (!layer.id.startsWith("fairmeet-route-layer-")) return;
-        const friendId = layer.id.replace("fairmeet-route-layer-", "");
+        if (!layer.id.startsWith("fairmeet-route-")) return;
+        const friendId = layer.id
+          .replace("fairmeet-route-casing-", "")
+          .replace("fairmeet-route-layer-", "");
         if (!activeRouteIds.has(friendId)) {
           if (map.getLayer(layer.id)) map.removeLayer(layer.id);
           const sourceId = `fairmeet-route-source-${friendId}`;
+          if (map.getLayer(`fairmeet-route-layer-${friendId}`)) map.removeLayer(`fairmeet-route-layer-${friendId}`);
+          if (map.getLayer(`fairmeet-route-casing-${friendId}`)) map.removeLayer(`fairmeet-route-casing-${friendId}`);
           if (map.getSource(sourceId)) map.removeSource(sourceId);
         }
       });
@@ -195,14 +201,25 @@ export default function Map({
         } else {
           map.addSource(sourceId, { type: "geojson", data: route.route_geojson });
           map.addLayer({
+            id: `fairmeet-route-casing-${route.friend_id}`,
+            type: "line",
+            source: sourceId,
+            layout: { "line-join": "round", "line-cap": "round" },
+            paint: {
+              "line-color": "#ffffff",
+              "line-width": 6,
+              "line-opacity": 0.9,
+            },
+          });
+          map.addLayer({
             id: layerId,
             type: "line",
             source: sourceId,
             layout: { "line-join": "round", "line-cap": "round" },
             paint: {
-              "line-color": friend?.color ?? "#2563eb",
-              "line-width": 4,
-              "line-opacity": 0.85,
+              "line-color": friend?.color ?? "#4f46e5",
+              "line-width": 3.5,
+              "line-opacity": 0.95,
             },
           });
         }
@@ -234,13 +251,23 @@ export default function Map({
 
   useEffect(() => {
     const map = mapRef.current;
+    if (!map || !mapReady || !selectedVenue) return;
+    map.easeTo({
+      center: [selectedVenue.lng, selectedVenue.lat],
+      zoom: Math.max(map.getZoom(), 14),
+      duration: 800,
+    });
+  }, [selectedVenue, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
     if (!map || !mapReady) return;
     fairMarkerRef.current?.remove();
     fairMarkerRef.current = null;
     if (fairPoint) {
       const element = document.createElement("div");
       element.textContent = "★";
-      element.style.cssText = "color:#d97706;font-size:34px;line-height:34px;text-shadow:0 1px 3px #0006;filter:drop-shadow(0 0 6px #f59e0b);animation:fairmeet-pulse 1.6s ease-in-out infinite";
+      element.style.cssText = "display:flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:9999px;color:#fbbf24;font-size:30px;line-height:34px;text-shadow:0 1px 3px #0006;box-shadow:0 0 0 8px #8b5cf644,0 0 18px #7c3aed99;background:#4c1d9588;animation:fairmeet-pulse 1.6s ease-in-out infinite";
       fairMarkerRef.current = new maplibregl.Marker({ element })
         .setLngLat([fairPoint.lng, fairPoint.lat])
         .addTo(map);
@@ -262,8 +289,12 @@ export default function Map({
       const existing = venueMarkersRef.current.get(venue.id);
       if (existing) {
         const element = existing.marker.getElement();
-        element.style.backgroundColor = selectedVenueId === venue.id ? "#db2777" : "#7c3aed";
-        element.style.transform = selectedVenueId === venue.id ? "rotate(-45deg) scale(1.35)" : "rotate(-45deg)";
+        const selected = selectedVenueId === venue.id;
+        element.textContent = selected ? "★" : venue.category.toLowerCase().includes("cafe") ? "☕" : "🍔";
+        element.style.backgroundColor = selected ? "#6d28d9" : "#7c3aed";
+        element.style.opacity = selected ? "1" : "0.8";
+        element.style.transform = selected ? "scale(1.3)" : "scale(1)";
+        element.style.boxShadow = selected ? "0 0 0 5px #6366f1aa, 0 4px 14px #4f46e580" : "0 2px 8px #0006";
         return;
       }
       const popup = new maplibregl.Popup({ offset: 18 }).setHTML(

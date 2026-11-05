@@ -35,8 +35,26 @@ export interface FriendRouteSummary {
   estimated_auto_fare_inr: number;
   estimated_cab_fare_inr: number;
   route_geojson: GeoJSON.Feature<GeoJSON.LineString>;
+  metro_journey?: MetroJourney;
 }
 
+export interface MetroInterchange {
+  station: string;
+  from_line: string;
+  to_line: string;
+}
+
+export interface MetroJourney {
+  origin_station: string;
+  origin_walk_or_drive_km: number;
+  destination_station: string;
+  destination_walk_km: number;
+  total_metro_stations: number;
+  interchanges: MetroInterchange[];
+  stations_sequence: string[];
+  estimated_metro_time_min: number;
+  approx_metro_fare_inr: number;
+}
 export interface RerouteResponse {
   destination: {
     lat: number;
