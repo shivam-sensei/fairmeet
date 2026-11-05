@@ -23,7 +23,6 @@ next-env.d.ts
 *.env
 
 # Local Database & Storage
-db/
 *.sqlite3
 pgdata/
 
