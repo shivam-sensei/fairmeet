@@ -8,6 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from shapely.geometry import shape, Point, mapping
+from metro_router import MetroRoute, compute_metro_journey
+from fastapi.middleware.cors import CORSMiddleware
+
 
 load_dotenv()
 
@@ -18,7 +21,7 @@ app = FastAPI(title="FairMeet API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"],  # Allows requests from localhost, Vercel, or custom domains
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -63,6 +66,7 @@ class FriendRouteSummary(BaseModel):
     estimated_auto_fare_inr: int
     estimated_cab_fare_inr: int
     route_geojson: dict
+    metro_journey: Optional[MetroRoute] = None
 
 class RerouteRequest(BaseModel):
     origins: List[LocationPoint]
@@ -123,6 +127,12 @@ async def fetch_single_route(
             estimated_auto_fare_inr=auto_fare,
             estimated_cab_fare_inr=cab_fare,
             route_geojson=feature,
+            metro_journey=compute_metro_journey(
+                orig_lat=origin.lat,
+                orig_lng=origin.lng,
+                dest_lat=destination["lat"],
+                dest_lng=destination["lng"],
+            ),
         )
     except Exception as error:
         print(f"Error routing friend {origin.id}: {error}")
